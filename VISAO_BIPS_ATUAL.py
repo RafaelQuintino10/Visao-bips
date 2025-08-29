@@ -1,20 +1,16 @@
 
 
-# # BOT BIPs
-# # 13/02/25 - Implementação do teclado - Retornado conforme 
-# # orientação do Carlos devido a delay do teclado numérico
-# # 03/03/25 - 281 - Adicionado o CHAT_ID na validação de grupos
-# # 06/03/25 - Implementação da rotina de validação do funcionário no 1° envio
-# # 16/07/25 - Implementação da rotina de troca de funcionários
-# # 08/08/25 - Implementação da rotina de envio de perdas (3 alertas)
 
-# # BOT BIPs
-# # 13/02/25 - Implementação do teclado - Retornado conforme 
-# # orientação do Carlos devido a delay do teclado numérico
-# # 03/03/25 - 281 - Adicionado o CHAT_ID na validação de grupos
-# # 06/03/25 - Implementação da rotina de validação do funcionário no 1° envio
-# # 16/07/25 - Implementação da rotina de troca de funcionários
-# # 08/08/25 - Implementação da rotina de envio de perdas (3 alertas)
+
+# # # BOT BIPs
+# # # 13/02/25 - Implementação do teclado - Retornado conforme 
+# # # orientação do Carlos devido a delay do teclado numérico
+# # # 03/03/25 - 281 - Adicionado o CHAT_ID na validação de grupos
+# # # 06/03/25 - Implementação da rotina de validação do funcionário no 1° envio
+# # # 16/07/25 - Implementação da rotina de troca de funcionários
+# # # 08/08/25 - Implementação da rotina de envio de perdas (3 alertas)
+
+
 
 from datetime import datetime, timedelta
 import random
@@ -24,7 +20,7 @@ import logging
 import sys
 from telegram import Update
 from telegram.ext import Application, MessageHandler, filters, CallbackContext, ContextTypes, CommandHandler
-
+from telegram.error import ChatMigrated
 active_chats = {}
 
 logging.basicConfig(
@@ -78,7 +74,7 @@ async def gerar_horarios(inicio, fim, chat_name):
 
         while inicio <= fim:
             horarios.append(inicio.strftime("%H:%M:%S"))
-            inicio += timedelta(minutes=random.randint(2,4)) # INTERVALO DA ALEATORIEDADE DOS HORÁRIOS EM MINUTOS
+            inicio += timedelta(minutes=random.randint(20,25)) # INTERVALO DA ALEATORIEDADE DOS HORÁRIOS EM MINUTOS
     except Exception as e:
         print(f"Erro ao gerar horários: {e}")
     print(f"Horários gerados pro grupo {chat_name}: {horarios}")
@@ -153,6 +149,18 @@ async def start_bot(chat_id, chat_name, context):
         # print(f'Última checagem pro grupo {chat_name}: {active_chats[chat_id]['ultima_checagem']}')
         if (agora - active_chats[chat_id]['ultima_checagem']).total_seconds() > 120:
             print("Checando por atualizações no banco...")
+            # nova_hora_inicio, nova_hora_fim = await consulta_banco(chat_id)
+            cursor.execute("SELECT COD_GRUPO FROM TLG_GRUPOS WHERE NOMEGRUPO = %s", (chat_name,))
+            resultado = cursor.fetchone()
+            
+            if resultado:
+                novo_chat_id = int(resultado[0])
+                if novo_chat_id != chat_id:
+                    print(f"[INFO] Grupo {chat_name} mudou de ID no banco: {chat_id} -> {novo_chat_id}")
+                    active_chats[novo_chat_id] = active_chats.pop(chat_id)
+                    chat_id = novo_chat_id  
+            
+            # Agora consulta os horários usando o chat_id atualizado
             nova_hora_inicio, nova_hora_fim = await consulta_banco(chat_id)
 
             if nova_hora_inicio != active_chats[chat_id]['ultima_hora_inicio'] or nova_hora_fim != active_chats[chat_id]['ultima_hora_fim']:
@@ -179,6 +187,7 @@ async def start_bot(chat_id, chat_name, context):
                 tentativas += 1
                 print(f"Tentativa {tentativas} de {max_tentativas} para o grupo {chat_name}")
 
+               
 
                 if tentativas == 1:
                     cursor.execute(
@@ -212,11 +221,11 @@ async def start_bot(chat_id, chat_name, context):
                     await context.bot.send_message(chat_id=chat_id, text="BIP❓", parse_mode='HTML')
                 
                 elif tentativas == 4:
-                    await context.bot.send_message(chat_id=chat_id, text="❌", parse_mode='HTML')
+                    await context.bot.send_message(chat_id=chat_id, text="Perda ❌", parse_mode='HTML')
                 # await context.bot.send_message(chat_id=int(chat_id), text=f'Não recebi o bip das {hora_envio_explicita.strftime("%H:%M")}! Favor, retornar!!!')
 
                 print("Sem resposta nesta tentativa, tentando novamente..." if tentativas < max_tentativas else "Sem resposta após todas as tentativas.")
-                await asyncio.sleep(40)
+                await asyncio.sleep(2*60)
 
             if resposta_func is None:
                 cursor.execute('select hmsini, hmsfim from tlg_bip where cod_grupo = %s', (chat_id,))
@@ -264,12 +273,12 @@ async def start_bot(chat_id, chat_name, context):
                                 print(funcionario[0])
                                 msg_supervisao = f'Perda de BIP: {funcionario[0]} no grupo {chat_name} // {hora_envio_explicita.time().strftime("%H:%M")}!'
                                 await context.bot.send_message(chat_id=int(tlg_bip_dados[2]), text=msg_supervisao)
-                                await context.bot.send_message(chat_id=int(chat_id), text='Não recebi o bip! Favor, retornar!!!')
+                                # await context.bot.send_message(chat_id=int(chat_id), text='Não recebi o bip! Favor, retornar!!!')
                             else:
                                 print('Funcionário não encontrado na tabela USERS')
                                 msg_supervisao = f'Perda de BIP no grupo: {chat_name} // {hora_envio_explicita.time().strftime("%H:%M")}!'
                                 await context.bot.send_message(chat_id=int(tlg_bip_dados[2]), text=msg_supervisao)
-                                await context.bot.send_message(chat_id=int(chat_id), text='Não recebi o bip! Favor, retornar!!!')
+                                # await context.bot.send_message(chat_id=int(chat_id), text='Não recebi o bip! Favor, retornar!!!')
                         else:
                             print('Dados insuficientes para formar código do funcionário')
                     else:
@@ -351,8 +360,10 @@ async def handle_tips_code(update: Update, context: CallbackContext) -> None:
                     if resultado.split()[-1] == 'SIM/NÃO':
                         await context.bot.send_message(chat_id=chat_id, text=resultado)
                         context.chat_data['aguardando_confirmacao'] = True
+                    elif 'Código inválido!' in resultado or 'não' in resultado or 'INCORRETO' in resultado :
+                        await context.bot.send_message(chat_id=chat_id, text=f'{resultado}❌')
                     else:
-                        await context.bot.send_message(chat_id=chat_id, text=f'{resultado.split()[1].replace(",","")}✅')
+                        await context.bot.send_message(chat_id=chat_id, text=f'{resultado}✅')
                 else:
                     print("Retorno já registrado ou sem resposta.")
             except Exception as e:
@@ -414,8 +425,49 @@ async def restaurar_monitoramento(context: ContextTypes.DEFAULT_TYPE):
                 print(f'Restaurando monitoramento para o grupo {chat_name} // {chat_id}.')
         except Exception as e:
                 print(f"Erro ao restaurar monitoramento para o chat {chat_name} //{chat_id}: {e}")
+        
+        await asyncio.sleep(3)
 
 
+
+
+async def detectar_supergrupo(update: Update, context: ContextTypes.DEFAULT_TYPE):   
+    if update.message and update.message.migrate_to_chat_id:   
+        antigo_chat_id = update.message.chat.id   
+        novo_chat_id = update.message.migrate_to_chat_id   
+        print(f"[INFO] Grupo migrado para supergrupo! ID antigo: {antigo_chat_id}, Novo ID: {novo_chat_id}")   
+   
+        database = await conexao_banco()   
+        cursor = database.cursor()   
+        cursor.execute(   
+            '''UPDATE TLG_GRUPOS SET COD_GRUPO = %s WHERE COD_GRUPO = %s''',   
+            (novo_chat_id, antigo_chat_id)   
+        )   
+
+        cursor.execute(
+            '''UPDATE TLG_BIP SET COD_GRUPO = %s WHERE COD_GRUPO = %s''',
+            (novo_chat_id, antigo_chat_id)
+        )   
+   
+        database.commit()
+
+        if antigo_chat_id in active_chats:   
+            print(f"Mudando de {antigo_chat_id} para {novo_chat_id} em active chats...") 
+            active_chats[novo_chat_id] = active_chats.pop(antigo_chat_id)   
+   
+
+        try:   
+            await update.message.reply_text(   
+                f"O grupo foi migrado para supergrupo!\n"   
+                f"ID antigo: {antigo_chat_id}\n"   
+                f"Novo ID: {novo_chat_id}"   
+            )   
+        except ChatMigrated:   
+            await context.bot.send_message(   
+                chat_id=novo_chat_id,   
+                text=f"O grupo foi migrado para supergrupo!\nID antigo: {antigo_chat_id}\nNovo ID: {novo_chat_id}"   
+            )   
+   
 def main() -> None:
 
     try:
@@ -426,6 +478,7 @@ def main() -> None:
         # conexao_api = Application.builder().token("7920327954:AAETrVcvg1wiS5PCwVI_aXJLPR4uVp5sgNw").read_timeout(20).connect_timeout(20).build()
         conexao_api.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_tips_code))
         conexao_api.add_handler(MessageHandler(filters.StatusUpdate.NEW_CHAT_MEMBERS, ao_ser_adicionado))
+        conexao_api.add_handler(MessageHandler(filters.StatusUpdate.MIGRATE, detectar_supergrupo))
         # conexao_api.add_handler(CommandHandler('trocar', corrigir_fun))
         # conexao_api.add_handler(CommandHandler('troca', troca_func))
 
@@ -437,7 +490,5 @@ def main() -> None:
 
 if __name__ == '__main__':                
     main()
-
-
 
 
